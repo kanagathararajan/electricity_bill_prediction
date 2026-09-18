@@ -1,15 +1,27 @@
+%%writefile app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
+import joblib
+import os
 
-# Set layout dynamically based on current step
+# Page Config
 st.set_page_config(
     page_title="VoltWise | Smart Electricity Advisor",
     page_icon="⚡",
     layout="centered" if "step" in st.session_state and st.session_state.step == "login" else "wide"
 )
 
-# ----------------- SESSION STATE ROUTER -----------------
+# Load Trained Model Pipeline with caching
+@st.cache_resource
+def load_pipeline():
+    if os.path.exists("model_pipeline.pkl"):
+        return joblib.load("model_pipeline.pkl")
+    return None
+
+model = load_pipeline()
+
+# Session State
 if "step" not in st.session_state:
     st.session_state.step = "login"
 if "username" not in st.session_state:
@@ -17,113 +29,101 @@ if "username" not in st.session_state:
 if "user_data" not in st.session_state:
     st.session_state.user_data = {}
 
-# ----------------- STEP 1: AUTHENTICATION -----------------
+# ----------------- PAGE 1: LOGIN -----------------
 def render_login():
     st.markdown("<h2 style='text-align: center;'>⚡ VoltWise Portal</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #888;'>Smart Electricity Budget & Advisory System</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #888;'>Data-Driven Electricity Budget & Advisory System</p>", unsafe_allow_html=True)
     st.write("")
 
     with st.container(border=True):
-        st.subheader("Sign In")
+        st.subheader("Consumer Sign In")
         username_input = st.text_input("Consumer ID / Username", value="consumer_chennai_102")
         password_input = st.text_input("Password", type="password", value="securePass123")
         
-        col_btn, col_help = st.columns([1, 2])
-        with col_btn:
-            if st.button("Sign In 🔐", type="primary", use_container_width=True):
-                if username_input.strip() and password_input.strip():
-                    st.session_state.username = username_input.strip()
-                    st.session_state.step = "audit"
-                    st.rerun()
-                else:
-                    st.error("Please provide both Consumer ID and Password.")
-        with col_help:
-            st.caption("Demo credentials pre-filled. Click **Sign In** to proceed to the audit.")
+        if st.button("Sign In 🔐", type="primary", use_container_width=True):
+            if username_input.strip() and password_input.strip():
+                st.session_state.username = username_input.strip()
+                st.session_state.step = "audit"
+                st.rerun()
+            else:
+                st.error("Please enter both ID and Password.")
 
-# ----------------- STEP 2: HOUSEHOLD AUDIT FORM -----------------
+# ----------------- PAGE 2: AUDIT FORM -----------------
 def render_audit_form():
     c1, c2 = st.columns([4, 1])
     with c1:
-        st.title("📋 Household Power & Appliance Audit")
-        st.caption(f"Authenticated as: **{st.session_state.username}**")
+        st.title("📋 Household Power & Budget Audit")
+        st.caption(f"Consumer: **{st.session_state.username}**")
     with c2:
         if st.button("Log Out", use_container_width=True):
             st.session_state.clear()
             st.session_state.step = "login"
             st.rerun()
 
-    st.write("Please configure your regional electricity details and household inventory:")
-    
-    with st.form("energy_audit_form"):
-        st.subheader("1. Regional & Provider Details")
+    with st.form("audit_form"):
+        st.subheader("1. Region & Utility Details")
         r1, r2 = st.columns(2)
         with r1:
-            state = st.selectbox("State", ["Tamil Nadu", "Maharashtra", "Gujarat", "Delhi NCR", "Karnataka", "West Bengal"])
-            city = st.selectbox("City", ["Chennai", "Mumbai", "New Delhi", "Ahmedabad", "Hyderabad", "Kolkata", "Pune", "Noida", "Vadodara"])
-        with r2:
-            company = st.selectbox("Electricity Board / Provider", [
-                "TANGEDCO", "Tata Power Company Ltd.", "Adani Power Ltd.", 
-                "Reliance Energy", "CESC", "Torrent Power Ltd."
+            city = st.selectbox("City", [
+                "Chennai", "Mumbai", "New Delhi", "Ahmedabad", "Hyderabad", 
+                "Kolkata", "Pune", "Noida", "Gurgaon", "Vadodara", "Ratnagiri", "Shimla"
             ])
-            tariff_rate = st.number_input("Tariff Rate (₹ per kWh)", min_value=5.0, max_value=15.0, value=8.40, step=0.10)
+            month = st.selectbox("Current Month", list(range(1, 13)), index=8)
+        with r2:
+            company = st.selectbox("Electricity Provider", [
+                "Tata Power Company Ltd.", "Adani Power Ltd.", "Reliance Energy", 
+                "CESC", "Torrent Power Ltd.", "JSW Energy Ltd.", "NTPC Pvt. Ltd."
+            ])
+            tariff_rate = st.number_input("Tariff Rate (₹/kWh)", min_value=5.0, max_value=12.0, value=8.37, step=0.05)
 
         st.divider()
 
-        st.subheader("2. Target Budget & Previous Consumption")
+        st.subheader("2. Financial Targets")
         f1, f2 = st.columns(2)
         with f1:
-            prev_bill = st.number_input("Last Month's Billed Amount (₹)", min_value=100.0, max_value=30000.0, value=4200.0, step=50.0)
+            prev_bill = st.number_input("Previous Month's Bill (₹)", min_value=100.0, max_value=30000.0, value=4200.0, step=50.0)
         with f2:
-            monthly_budget = st.number_input("Your Desired Monthly Budget (₹)", min_value=100.0, max_value=30000.0, value=3500.0, step=50.0)
+            monthly_budget = st.number_input("Target Monthly Budget (₹)", min_value=100.0, max_value=30000.0, value=3800.0, step=50.0)
 
         st.divider()
 
-        st.subheader("3. Appliance Inventory & Daily Usage")
+        st.subheader("3. Appliance Inventory & Runtimes")
         a1, a2, a3 = st.columns(3)
         with a1:
-            fan = st.slider("Ceiling/Table Fans (Count)", 1, 20, 10)
-            ac = st.slider("Air Conditioners (Units)", 0, 5, 2)
+            fan = st.slider("Ceiling Fans (Units)", 1, 23, 14)
+            ac = st.slider("Air Conditioners (Units)", 0, 4, 2)
         with a2:
-            fridge_hrs = st.slider("Refrigerator (Active Hours/Day)", 12, 24, 22)
-            tv_hrs = st.slider("Television (Daily Hours)", 0, 18, 6)
+            fridge = st.slider("Refrigerator (Daily Run Hours)", 15, 24, 22)
+            tv = st.slider("Television (Daily Hours)", 2, 22, 12)
         with a3:
-            monitor_hrs = st.slider("Computer/Monitor (Daily Hours)", 0, 16, 4)
-            monthly_hours = st.slider("Total Cumulative Grid Hours", 90, 950, 520)
+            monitor = st.slider("Computer/Monitor (Daily Hours)", 1, 12, 3)
+            monthly_hours = st.slider("Total Monthly Aggregate Hours", 95, 926, 515)
 
-        st.write("")
-        submit_button = st.form_submit_button("Analyze Budget & View Recommendations ➡️", type="primary", use_container_width=True)
-
-        if submit_button:
+        submit = st.form_submit_button("Run Advisory Model ➡️", type="primary", use_container_width=True)
+        if submit:
             st.session_state.user_data = {
-                "state": state,
-                "city": city,
-                "company": company,
-                "tariff_rate": tariff_rate,
-                "prev_bill": prev_bill,
-                "monthly_budget": monthly_budget,
-                "fan": fan,
-                "ac": ac,
-                "fridge_hrs": fridge_hrs,
-                "tv_hrs": tv_hrs,
-                "monitor_hrs": monitor_hrs,
-                "monthly_hours": monthly_hours
+                "City": city, "Company": company, "Month": month, "TariffRate": tariff_rate,
+                "Fan": fan, "Refrigerator": fridge, "AirConditioner": ac,
+                "Television": tv, "Monitor": monitor, "MonthlyHours": monthly_hours,
+                "prev_bill": prev_bill, "monthly_budget": monthly_budget
             }
             st.session_state.step = "dashboard"
             st.rerun()
 
-# ----------------- STEP 3: ADVISORY DASHBOARD -----------------
+# ----------------- PAGE 3: DASHBOARD & WHAT-IF -----------------
 def render_dashboard():
     data = st.session_state.user_data
 
-    head_col, btn_col1, btn_col2 = st.columns([5, 1.2, 1.2])
-    with head_col:
-        st.title(f"📊 Energy Advisory Report: {data['city']}")
-        st.caption(f"Consumer: **{st.session_state.username}** | Utility: **{data['company']}** | State: **{data['state']}**")
-    with btn_col1:
-        if st.button("✏️ Recalculate", use_container_width=True):
+    # Top Navigation
+    col_t1, col_t2, col_t3 = st.columns([5, 1.2, 1.2])
+    with col_t1:
+        st.title(f"📊 Energy Advisory Report: {data['City']}")
+        st.caption(f"Consumer: **{st.session_state.username}** | Utility: **{data['Company']}** | Tariff: **₹{data['TariffRate']}/kWh**")
+    with col_t2:
+        if st.button("✏️ Edit Audit", use_container_width=True):
             st.session_state.step = "audit"
             st.rerun()
-    with btn_col2:
+    with col_t3:
         if st.button("Log Out", use_container_width=True):
             st.session_state.clear()
             st.session_state.step = "login"
@@ -131,97 +131,123 @@ def render_dashboard():
 
     st.divider()
 
-    rate_factor = data["tariff_rate"] / 8.37
-    cost_ac = (data["ac"] * 820) * rate_factor
-    cost_fan = (data["fan"] * 48) * rate_factor
-    cost_fridge = (data["fridge_hrs"] * 35) * rate_factor
-    cost_tv = (data["tv_hrs"] * 28) * rate_factor
-    cost_monitor = (data["monitor_hrs"] * 32) * rate_factor
-    base_cost = (data["monthly_hours"] * 3.6) * rate_factor
+    # Predict with ML Pipeline
+    input_df = pd.DataFrame([{
+        "Fan": data["Fan"],
+        "Refrigerator": data["Refrigerator"],
+        "AirConditioner": data["AirConditioner"],
+        "Television": data["Television"],
+        "Monitor": data["Monitor"],
+        "Month": data["Month"],
+        "City": data["City"],
+        "Company": data["Company"],
+        "MonthlyHours": data["MonthlyHours"],
+        "TariffRate": data["TariffRate"]
+    }])
 
-    predicted_bill = base_cost + cost_ac + cost_fan + cost_fridge + cost_tv + cost_monitor
-    budget_deficit = predicted_bill - data["monthly_budget"]
-    prev_bill_diff = predicted_bill - data["prev_bill"]
+    if model:
+        predicted_bill = float(model.predict(input_df)[0])
+    else:
+        # Fallback estimation if model not detected
+        predicted_bill = (data["MonthlyHours"] * 4.2 + data["AirConditioner"] * 800 + data["Fan"] * 45) * (data["TariffRate"] / 8.37)
 
+    budget_diff = predicted_bill - data["monthly_budget"]
+    prev_diff = predicted_bill - data["prev_bill"]
+
+    # Health Score
     score = 100
-    if data["ac"] > 1: score -= 20
-    if data["monthly_hours"] > 600: score -= 20
-    if data["tv_hrs"] > 8: health_score = score - 10
-    if data["monitor_hrs"] > 4: score -= 10
+    if data["AirConditioner"] > 1: score -= 20
+    if data["MonthlyHours"] > 600: score -= 20
+    if data["Television"] > 12: score -= 10
+    if data["Monitor"] > 3: score -= 10
     health_score = max(0, min(100, score))
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Predicted Bill", f"₹{predicted_bill:,.2f}")
-    m2.metric(
+    # Top KPI Metrics
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Predicted Bill (ML)", f"₹{predicted_bill:,.2f}")
+    k2.metric(
         "Budget Target",
         f"₹{data['monthly_budget']:,.2f}",
-        delta=f"-₹{budget_deficit:,.2f} Over Budget" if budget_deficit > 0 else f"+₹{abs(budget_deficit):,.2f} Within Budget",
-        delta_color="inverse" if budget_deficit > 0 else "normal"
+        delta=f"-₹{budget_diff:,.2f} Exceeded" if budget_diff > 0 else f"+₹{abs(budget_diff):,.2f} Under Budget",
+        delta_color="inverse" if budget_diff > 0 else "normal"
     )
-    m3.metric(
-        "vs. Previous Month",
+    k3.metric(
+        "vs. Last Month",
         f"₹{data['prev_bill']:,.2f}",
-        delta=f"+₹{prev_bill_diff:,.2f}" if prev_bill_diff > 0 else f"-₹{abs(prev_bill_diff):,.2f}",
-        delta_color="inverse" if prev_bill_diff > 0 else "normal"
+        delta=f"+₹{prev_diff:,.2f}" if prev_diff > 0 else f"-₹{abs(prev_diff):,.2f}",
+        delta_color="inverse" if prev_diff > 0 else "normal"
     )
-    m4.metric("Electricity Health Score", f"{health_score} / 100")
+    k4.metric("Electricity Health Score", f"{health_score} / 100")
 
     st.write("")
 
-    if budget_deficit > 0:
-        st.error(f"🚨 **Budget Breach Alert:** Your projected bill exceeds your monthly budget by **₹{budget_deficit:,.2f}** ({((budget_deficit/data['monthly_budget'])*100):.1f}% over budget). Implement the action plan below to stay within budget.")
+    if budget_diff > 0:
+        st.error(f"🚨 **Budget Breach Alert:** Projected bill exceeds your budget by **₹{budget_diff:,.2f}** ({((budget_diff/data['monthly_budget'])*100):.1f}% over limit). Apply the reduction plan below.")
     else:
-        st.success(f"🎉 **Within Budget:** Your current projected bill is **₹{abs(budget_deficit):,.2f} under** your set threshold.")
+        st.success(f"🎉 **On Budget:** Your expected consumption is **₹{abs(budget_diff):,.2f} below** your ceiling.")
 
-    col_chart, col_actions = st.columns([1, 1], gap="large")
+    # Two column: Chart + Recommendations
+    col_chart, col_rec = st.columns([1, 1], gap="large")
 
     with col_chart:
-        st.subheader("📊 Cost Distribution by Appliance")
-        chart_df = pd.DataFrame({
-            "Appliance": ["Air Conditioners", "Fans", "Refrigerator", "TV", "Computers/Monitors", "Baseline Grid"],
-            "Estimated Bill (₹)": [cost_ac, cost_fan, cost_fridge, cost_tv, cost_monitor, base_cost]
-        }).set_index("Appliance")
-        st.bar_chart(chart_df)
+        st.subheader("⚡ Approximate Appliance Load Share")
+        breakdown_df = pd.DataFrame({
+            "Component": ["Air Conditioners", "Fans", "Refrigerator", "TV & Monitors", "Base Grid Load"],
+            "Cost (₹)": [
+                data["AirConditioner"] * 820,
+                data["Fan"] * 48,
+                data["Refrigerator"] * 35,
+                (data["Television"] * 25) + (data["Monitor"] * 30),
+                data["MonthlyHours"] * 3.5
+            ]
+        }).set_index("Component")
+        st.bar_chart(breakdown_df)
 
-    with col_actions:
-        st.subheader("💡 Actionable Reduction Plan")
-        recommendations = []
+    with col_rec:
+        st.subheader("💡 Recommended Actions to Recover Budget")
+        actions = []
+        if data["AirConditioner"] > 0:
+            actions.append({"Appliance": "Air Conditioner", "Strategy": "Increase thermostat to 25°C & trim 1.5h daily usage", "Est. Savings": f"₹{data['AirConditioner']*320:,.0f}"})
+        if data["Fan"] > 8:
+            actions.append({"Appliance": "Ceiling Fans", "Strategy": "Switch off units in vacant rooms", "Est. Savings": f"₹{(data['Fan']-8)*24:,.0f}"})
+        if data["Television"] > 8:
+            actions.append({"Appliance": "Television", "Strategy": "Disable idle standby power consumption", "Est. Savings": f"₹{(data['Television']-8)*20:,.0f}"})
+        if data["MonthlyHours"] > 500:
+            actions.append({"Appliance": "Peak Usage", "Strategy": "Shift heavy iron & washing cycles to morning", "Est. Savings": f"₹{(data['MonthlyHours']-500)*3.5:,.0f}"})
 
-        if data["ac"] > 0:
-            saving_ac = data["ac"] * 320 * rate_factor
-            recommendations.append({
-                "Appliance": "Air Conditioner",
-                "Action Plan": "Set temperature to 24°C-26°C and enable sleep timer.",
-                "Estimated Monthly Savings": f"₹{saving_ac:,.0f}"
-            })
-        if data["fan"] > 6:
-            saving_fan = (data["fan"] - 6) * 25 * rate_factor
-            recommendations.append({
-                "Appliance": "Ceiling Fans",
-                "Action Plan": "Turn off fans in unoccupied rooms and reduce run hours.",
-                "Estimated Monthly Savings": f"₹{saving_fan:,.0f}"
-            })
-        if data["tv_hrs"] > 4:
-            saving_tv = (data["tv_hrs"] - 4) * 20 * rate_factor
-            recommendations.append({
-                "Appliance": "Television",
-                "Action Plan": "Turn off main wall switch when idle to eliminate standby draw.",
-                "Estimated Monthly Savings": f"₹{saving_tv:,.0f}"
-            })
-        if data["monthly_hours"] > 500:
-            saving_grid = (data["monthly_hours"] - 500) * 3.5 * rate_factor
-            recommendations.append({
-                "Appliance": "Peak Grid Hours",
-                "Action Plan": "Schedule heavy washing and iron usage during off-peak morning hours.",
-                "Estimated Monthly Savings": f"₹{saving_grid:,.0f}"
-            })
-
-        if recommendations:
-            st.dataframe(pd.DataFrame(recommendations), use_container_width=True, hide_index=True)
+        if actions:
+            st.dataframe(pd.DataFrame(actions), use_container_width=True, hide_index=True)
         else:
-            st.info("Your usage profile is already well within optimal thresholds.")
+            st.info("Current configuration operates within normal household parameters.")
 
-# ----------------- APP CONTROLLER -----------------
+    st.divider()
+
+    # ----------------- GOAL #8: WHAT-IF SIMULATOR -----------------
+    st.subheader("🧪 What-If Simulator")
+    st.caption("Adjust prospective changes to test potential savings before making actual behavioral adjustments.")
+
+    s1, s2, s3 = st.columns(3)
+    with s1:
+        sim_ac = st.slider("Simulate AC Units", 0, 4, data["AirConditioner"])
+    with s2:
+        sim_fan = st.slider("Simulate Fans", 1, 23, data["Fan"])
+    with s3:
+        sim_hours = st.slider("Simulate Monthly Hours", 95, 926, data["MonthlyHours"])
+
+    sim_input = input_df.copy()
+    sim_input["AirConditioner"] = sim_ac
+    sim_input["Fan"] = sim_fan
+    sim_input["MonthlyHours"] = sim_hours
+
+    if model:
+        sim_bill = float(model.predict(sim_input)[0])
+    else:
+        sim_bill = (sim_hours * 4.2 + sim_ac * 800 + sim_fan * 45) * (data["TariffRate"] / 8.37)
+
+    bill_delta = predicted_bill - sim_bill
+    st.info(f"💡 **Simulated Bill:** **₹{sim_bill:,.2f}** | **Net Monthly Difference:** {'🟢 Saves ₹' + f'{bill_delta:,.2f}' if bill_delta >= 0 else '🔴 Increases by ₹' + f'{abs(bill_delta):,.2f}'}")
+
+# Router
 if st.session_state.step == "login":
     render_login()
 elif st.session_state.step == "audit":
